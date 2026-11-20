@@ -49,11 +49,15 @@ test("clears the cached profile only after email verification is saved", async (
     const clear = jest.spyOn(RedisService, "deleteKey").mockResolvedValue(undefined);
     const timestamp = "2026-11-19T00:00:00Z";
     // Check that invalidation waits for the repository write
-    const repository = { markEmailVerified: jest.fn(async () => expect(clear).not.toHaveBeenCalled()) };
+    const repository = { markEmailVerified: jest.fn(async () =>
+    {
+        expect(clear).not.toHaveBeenCalled();
+        return true;
+    }) };
     const users = new UserService(repository);
 
-    await users.markEmailVerified(account.id, timestamp);
-    expect(repository.markEmailVerified).toHaveBeenCalledWith(account.id, timestamp);
+    await users.markEmailVerified(account.id, timestamp, account.email);
+    expect(repository.markEmailVerified).toHaveBeenCalledWith(account.id, timestamp, account.email);
     expect(clear).toHaveBeenCalledWith(key);
 });
 

@@ -44,7 +44,7 @@ export async function readJson<T>(api: ApiClient, path: string, options?: Parame
  * @param body Request payload.
  * @returns Authenticated JSON request options.
  */
-export function jsonWrite(method: 'POST' | 'PATCH', body: unknown) : NonNullable<Parameters<ApiClient['request']>[1]>
+export function jsonWrite(method: 'POST' | 'PATCH' | 'PUT', body: unknown) : NonNullable<Parameters<ApiClient['request']>[1]>
 {
     return {
         method,

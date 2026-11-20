@@ -147,6 +147,31 @@ describe('Phase 2 — Account and session flows', () =>
         expect(recovery.getAttribute('href')).toMatch(/^\/sign-in\?next=%2Fverify-email/)
     })
 
+    test('saves profile edits and updates the signed-in account header', async () =>
+    {
+        const updated = { ...student, firstName: 'Jordan', email: 'jordan@example.test' }
+        const send = vi.fn<typeof fetch>().mockResolvedValueOnce(tokenResponse('restored'))
+            .mockResolvedValueOnce(Response.json(student))
+            .mockResolvedValueOnce(Response.json(updated))
+        renderApp('/account', send)
+
+        fireEvent.change(await screen.findByLabelText('First name'), { target: { value: updated.firstName } })
+        fireEvent.change(screen.getByLabelText('Email', { exact: true }), { target: { value: updated.email } })
+        fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'sample-password' } })
+        fireEvent.click(screen.getByRole('button', { name: 'Save profile' }))
+
+        expect(await screen.findByText('Profile saved. Verify your new email address.')).toBeDefined()
+        expect(screen.getByText('Hi, Jordan')).toBeDefined()
+        expect(screen.getByLabelText('Current password')).toHaveProperty('value', '')
+        expect(send).toHaveBeenNthCalledWith(3, '/api/users/me', expect.objectContaining({
+            method: 'PATCH',
+            body: JSON.stringify({
+                firstName: updated.firstName, lastName: student.lastName, email: updated.email,
+                currentPassword: 'sample-password', newPassword: '',
+            }),
+        }))
+    })
+
     test('clears session state and returns to sign-in on logout', async () =>
     {
         const send = vi.fn<typeof fetch>().mockResolvedValueOnce(tokenResponse('restored'))

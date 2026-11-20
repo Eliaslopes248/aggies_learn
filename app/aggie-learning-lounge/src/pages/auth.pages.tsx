@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
 
+import { jsonWrite, readJson, requestMessage } from '../api/catalog.js'
 import { ApiError, type ApiClient, type Profile } from '../api/client.js'
 import { authLink, returnPath } from '../api/auth.navigation.js'
 import { Button, Field } from '../components/ui/controls.js'
@@ -8,12 +9,17 @@ import { FormMessage } from '../components/ui/feedback.js'
 
 /**
  * Present an auth form or account status inside the shared shell.
- * @param props Page heading, optional introduction, and body.
+ * @param props Page heading, optional introduction, body, and full-width account layout.
  */
-function AuthPanel({ title, description, children }: { title: string; description?: string; children: ReactNode }) : React.JSX.Element
+function AuthPanel({ title, description, children, wide = false }: {
+    title: string
+    description?: string
+    children: ReactNode
+    wide?: boolean
+}) : React.JSX.Element
 {
     return (
-        <section className="auth-page page-width" aria-labelledby="auth-heading">
+        <section className={wide ? 'auth-page page-width account-page' : 'auth-page page-width'} aria-labelledby="auth-heading">
             <div className="auth-panel">
                 <h1 id="auth-heading">{title}</h1>
                 {description && <p className="auth-description">{description}</p>}
@@ -299,24 +305,97 @@ export function VerificationPage({ api, profile, onProfile }: {
 }
 
 /**
- * Show the signed-in account and its sign-out action.
- * @param props Current profile and callback to end the session.
+ * Edit the signed-in account and show email verification and sign-out controls.
+ * @param props API client, current profile, and session callbacks.
+ * @returns Account settings page.
  */
-export function AccountPage({ profile, onLogout }: { profile: Profile; onLogout: () => Promise<void> }) : React.JSX.Element
+export function AccountPage({ api, profile, onUpdate, onLogout }: {
+    api: ApiClient
+    profile: Profile
+    onUpdate: (profile: Profile) => void
+    onLogout: () => Promise<void>
+}) : React.JSX.Element
 {
-    return (
-        <AuthPanel
-            title="Account"
-            description={`${profile.firstName} ${profile.lastName} · ${profile.email}`}
-        >
-            <div className="auth-actions">
-                {!profile.emailVerifiedAt && (
-                    <Link className="button button--secondary" to="/verify-email">
-                        Verify your email
-                    </Link>
-                )}
+    const [busy, setBusy] = useState(false)
+    const [error, setError] = useState('')
+    const [message, setMessage] = useState('')
+    const [revision, setRevision] = useState(0)
 
-                <Button onClick={() => void onLogout()}>Sign out</Button>
+    /**
+     * Save the profile and update the name shown in the app header.
+     * @param event Account form submission.
+     */
+    async function saveProfile(event: FormEvent<HTMLFormElement>) : Promise<void>
+    {
+        event.preventDefault()
+        const fields = Object.fromEntries(new FormData(event.currentTarget))
+        setBusy(true)
+        setError('')
+        setMessage('')
+
+        try
+        {
+            const updated = await readJson<Profile>(api, '/users/me', jsonWrite('PATCH', fields))
+            onUpdate(updated)
+            setRevision(current => current + 1)
+            setMessage(updated.email !== profile.email
+                ? 'Profile saved. Verify your new email address.'
+                : 'Profile saved.')
+        }
+        catch (error)
+        {
+            setError(requestMessage(error))
+        }
+        finally
+        {
+            setBusy(false)
+        }
+    }
+
+    return (
+        <AuthPanel title="Account" wide>
+            <form key={revision} className="auth-form account-profile-form" onSubmit={saveProfile}>
+                <fieldset disabled={busy} className="account-profile-section">
+                    <legend>Personal information</legend>
+                    <Field label="First name" name="firstName" autoComplete="given-name" defaultValue={profile.firstName} maxLength={150} required />
+                    <Field label="Last name" name="lastName" autoComplete="family-name" defaultValue={profile.lastName} maxLength={150} required />
+                </fieldset>
+
+                <fieldset disabled={busy} className="account-profile-section">
+                    <legend>Email address</legend>
+                    <Field label="Email" name="email" type="email" autoComplete="email" defaultValue={profile.email} maxLength={254} required />
+                    {profile.emailVerifiedAt
+                        ? <p>Email verified</p>
+                        : <Link className="text-link" to="/verify-email">Verify your email</Link>}
+                </fieldset>
+
+                <fieldset disabled={busy} className="account-profile-section">
+                    <legend>Password</legend>
+                    <Field
+                        label="Current password"
+                        name="currentPassword"
+                        type="password"
+                        autoComplete="current-password"
+                        hint="Required when changing your email or password."
+                    />
+                    <Field
+                        label="New password"
+                        name="newPassword"
+                        type="password"
+                        autoComplete="new-password"
+                        minLength={12}
+                        hint="Leave blank to keep your current password."
+                    />
+                </fieldset>
+
+                <div className="record-actions">
+                    <Button type="submit" pending={busy}>Save profile</Button>
+                </div>
+                {message && <FormMessage kind="success">{message}</FormMessage>}
+                {error && <FormMessage kind="error">{error}</FormMessage>}
+            </form>
+            <div className="record-actions">
+                <Button variant="secondary" disabled={busy} onClick={() => void onLogout()}>Sign out</Button>
             </div>
         </AuthPanel>
     )

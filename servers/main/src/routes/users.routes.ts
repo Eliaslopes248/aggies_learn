@@ -85,6 +85,36 @@ usersRouter.post("/", authRateLimit, registerStudent);
 // profile and load current roles from MySQL
 usersRouter.get("/me", requireSession, getAccount);
 
+// Save only the authenticated account's profile.
+usersRouter.patch("/me", requireSession, authRateLimit, async (req, res) =>
+{
+    const { firstName, lastName, email, currentPassword, newPassword } = req.body ?? {};
+    res.json(await getServices(req).auth.updateProfile(res.locals.session.accountId, {
+        firstName, lastName, email, currentPassword, newPassword,
+    }));
+});
+
+// Set a student password without exposing it in the response.
+usersRouter.put("/students/:studentId/password", requireSession, requireCurrentRole("admin"), authRateLimit, async (req, res) =>
+{
+    const { password } = req.body ?? {};
+    if (typeof password !== "string")
+    {
+        res.status(400).json({ error: "Enter a new password." });
+        return;
+    }
+
+    await getServices(req).auth.changeStudentPassword(queryText(req.params.studentId) ?? "", password);
+    res.status(204).end();
+});
+
+// Generate a password and email it to the student's verified address.
+usersRouter.post("/students/:studentId/password/reset", requireSession, requireCurrentRole("admin"), authRateLimit, async (req, res) =>
+{
+    await getServices(req).auth.changeStudentPassword(queryText(req.params.studentId) ?? "");
+    res.status(204).end();
+});
+
 // List student profiles for the admin catalog.
 usersRouter.get("/students", requireSession, requireCurrentRole("admin"), async (req, res) =>
 {

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { jsonWrite, requestMessage } from '../api/catalog.js'
 import type { ApiClient } from '../api/client.js'
 import { AccountDirectory, type DirectoryProfile } from '../components/account.directory.js'
+import { ConfirmationDialog } from '../components/ui/confirmation.dialog.js'
 import { Button, Field } from '../components/ui/controls.js'
 import { FormMessage } from '../components/ui/feedback.js'
 
@@ -14,6 +15,7 @@ import { FormMessage } from '../components/ui/feedback.js'
 export default function AdminStudentsPage({ api }: { api: ApiClient }) : React.JSX.Element
 {
     const [student, setStudent] = useState<DirectoryProfile | null>(null)
+    const [passwordRevision, setPasswordRevision] = useState(0)
     const [revision, setRevision] = useState(0)
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
@@ -50,6 +52,7 @@ export default function AdminStudentsPage({ api }: { api: ApiClient }) : React.J
         const firstName = String(fields.get('firstName')).trim()
         const lastName = String(fields.get('lastName')).trim()
         setError('')
+        setMessage('')
         setBusy(true)
 
         try
@@ -67,6 +70,57 @@ export default function AdminStudentsPage({ api }: { api: ApiClient }) : React.J
         {
             setBusy(false)
         }
+    }
+
+    /**
+     * Set a new password or request delivery of a generated password.
+     * @param password Password supplied by the admin, if setting it directly.
+     */
+    async function changePassword(password?: string) : Promise<void>
+    {
+        if (!student || busy)
+        {
+            return
+        }
+
+        setBusy(true)
+        setError('')
+        setMessage('')
+
+        try
+        {
+            const path = `/users/students/${student.id}/password`
+            if (password === undefined)
+            {
+                await api.request(`${path}/reset`, { method: 'POST', authenticated: true })
+                setMessage('Reset password emailed to the student.')
+            }
+            else
+            {
+                await api.request(path, jsonWrite('PUT', { password }))
+                setMessage('Student password updated.')
+            }
+            setPasswordRevision(current => current + 1)
+        }
+        catch (error)
+        {
+            setError(requestMessage(error))
+        }
+        finally
+        {
+            setBusy(false)
+        }
+    }
+
+    /**
+     * Read the new password from the manual password form.
+     * @param event Password form submission.
+     */
+    function savePassword(event: FormEvent<HTMLFormElement>) : void
+    {
+        event.preventDefault()
+        const fields = new FormData(event.currentTarget)
+        void changePassword(String(fields.get('password')))
     }
 
     return (
@@ -103,31 +157,63 @@ export default function AdminStudentsPage({ api }: { api: ApiClient }) : React.J
             </div>
 
             {student && (
-                <form className="workspace-record workspace-form" aria-labelledby="edit-student-name" onSubmit={saveName}>
-                    <h2 id="edit-student-name" ref={editorHeading} tabIndex={-1}>Edit {student.firstName} {student.lastName}</h2>
-                    <div className="record-actions">
-                        <Field
-                            label="First name"
-                            name="firstName"
-                            maxLength={150}
-                            defaultValue={student.firstName}
-                            required
-                            disabled={busy}
-                        />
-                        <Field
-                            label="Last name"
-                            name="lastName"
-                            maxLength={150}
-                            defaultValue={student.lastName}
-                            required
-                            disabled={busy}
-                        />
-                    </div>
+                <section className="workspace-form" aria-labelledby="edit-student">
+                    <h2 id="edit-student" ref={editorHeading} tabIndex={-1}>Edit {student.firstName} {student.lastName}</h2>
                     {error && <FormMessage kind="error">{error}</FormMessage>}
-                    <div className="record-actions">
-                        <Button type="submit" pending={busy}>Save student name</Button>
-                    </div>
-                </form>
+                    <form className="workspace-record workspace-form" aria-label="Edit student name" onSubmit={saveName}>
+                        <div className="record-actions">
+                            <Field
+                                label="First name"
+                                name="firstName"
+                                maxLength={150}
+                                defaultValue={student.firstName}
+                                required
+                                disabled={busy}
+                            />
+                            <Field
+                                label="Last name"
+                                name="lastName"
+                                maxLength={150}
+                                defaultValue={student.lastName}
+                                required
+                                disabled={busy}
+                            />
+                        </div>
+                        <div className="record-actions">
+                            <Button type="submit" pending={busy}>Save student name</Button>
+                        </div>
+                    </form>
+                    <section className="workspace-record workspace-form" aria-labelledby="student-password-heading">
+                        <h3 id="student-password-heading">Password</h3>
+                        <form key={passwordRevision} className="workspace-form" onSubmit={savePassword}>
+                            <Field
+                                label="New student password"
+                                name="password"
+                                type="password"
+                                autoComplete="new-password"
+                                minLength={12}
+                                required
+                                disabled={busy}
+                            />
+                            <div className="record-actions">
+                                <Button type="submit" pending={busy}>Set password</Button>
+                            </div>
+                        </form>
+                        {student.emailVerifiedAt
+                            ? !busy && (
+                                <div className="record-actions">
+                                    <ConfirmationDialog
+                                        triggerLabel="Email a reset password"
+                                        title="Reset this student's password?"
+                                        description={`A generated password will replace the current password and be sent to ${student.email}.`}
+                                        confirmLabel="Reset and email password"
+                                        onConfirm={() => void changePassword()}
+                                    />
+                                </div>
+                            )
+                            : <p>The student must verify their email before an emailed reset.</p>}
+                    </section>
+                </section>
             )}
         </section>
     )

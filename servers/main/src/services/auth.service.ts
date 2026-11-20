@@ -30,9 +30,9 @@
 
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 
-import { type Account, type AccountRole } from "../database/models/users.model.js";
+import { type Account, type AccountProfile, type AccountRole } from "../database/models/users.model.js";
 import { RedisService } from "../database/redis.service.js";
-import { type IUserRepository } from "../database/repositories/interfaces/users.interface.js";
+import { type IUserRepository, type ProfileChanges } from "../database/repositories/interfaces/users.interface.js";
 import { getJWTSecret, signAccessToken } from "../middleware/jwt.middleware.js";
 import { type EmailProvider } from "./email-delivery.service.js";
 import { hashPassword, verifyPassword } from "./password.utils.js";
@@ -44,6 +44,8 @@ const verificationTtlSeconds = 30 * 60;
 const opaqueTokenPattern = /^[a-f0-9]{64}$/;
 
 type Registration = { email: string; firstName: string; lastName: string; password: string };
+type ProfileInput = Omit<Registration, "password"> & { currentPassword?: string; newPassword?: string };
+type VerificationTarget = Pick<Account, "id" | "email">;
 type RefreshSession = { accountId: string; tokenHash: string; expiresAt: number };
 
 type AuthOptions = {
@@ -132,6 +134,138 @@ export class AuthService
     }
 
     /**
+     * Save the signed-in account's profile and require its password for credential changes.
+     * @param accountId Signed-in account ID.
+     * @param input Submitted names, email, and optional password change.
+     * @returns Updated profile and current roles.
+     */
+    async updateProfile(accountId: string, input: ProfileInput): Promise<AccountProfile & { roles: AccountRole[] }>
+    {
+        const id = requireId(accountId);
+        const account = await this.accounts.findAccountById(id);
+        if (!account)
+        {
+            throw new ServiceError(404, "Account not found.");
+        }
+
+        const changes: ProfileChanges = {
+            firstName: requireText(input.firstName, 150, "First name"),
+            lastName: requireText(input.lastName, 150, "Last name"),
+            email: requireText(input.email, 254, "Email").toLowerCase(),
+        };
+        const roles = await this.accounts.listRoles(id);
+        const emailChanged = changes.email !== account.email;
+        const newPassword = input.newPassword;
+        const passwordChanged = newPassword !== undefined && newPassword !== "";
+        if (emailChanged)
+        {
+            const domain = this.options.campusEmailDomain?.trim().toLowerCase();
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(changes.email) ||
+                (roles.includes("student") && domain && changes.email.split("@")[1] !== domain))
+            {
+                throw new ServiceError(400, "Enter a valid email address for your account.");
+            }
+        }
+
+        if ((emailChanged || passwordChanged) && !await verifyPassword(input.currentPassword ?? "", account.passwordHash))
+        {
+            throw new ServiceError(403, "Enter your correct current password to change your email or password.");
+        }
+
+        if (passwordChanged)
+        {
+            changes.passwordHash = await hashPassword(newPassword);
+        }
+
+        try
+        {
+            if (!await this.accounts.updateProfile(account, changes))
+            {
+                throw new ServiceError(409, "Your account changed. Reload the profile and try again.");
+            }
+        }
+        catch (error)
+        {
+            if ((error as NodeJS.ErrnoException)?.code === "ER_DUP_ENTRY")
+            {
+                throw new ServiceError(409, "An account already exists for that email.");
+            }
+
+            throw error;
+        }
+
+        await this.users.invalidateProfile(id);
+        if (emailChanged && this.options.redisEnabled && this.options.mail && this.options.verificationURL)
+        {
+            await this.sendVerification(id).catch(() => undefined);
+        }
+
+        const profile = toUserProfile(account);
+        return {
+            ...profile,
+            firstName: changes.firstName,
+            lastName: changes.lastName,
+            email: changes.email,
+            emailVerifiedAt: emailChanged ? null : profile.emailVerifiedAt,
+            roles,
+        };
+    }
+
+    /**
+     * Set a student's password or generate one and deliver it to a verified address.
+     * @param studentId Student account ID.
+     * @param password Admin-supplied password. An omitted password requests an emailed reset.
+     */
+    async changeStudentPassword(studentId: string, password?: string): Promise<void>
+    {
+        const id = requireId(studentId);
+        const account = await this.accounts.findAccountById(id);
+        if (!account || !(await this.accounts.listRoles(id)).includes("student"))
+        {
+            throw new ServiceError(404, "Student account not found.");
+        }
+
+        const mail = this.options.mail;
+        const emailReset = password === undefined;
+        if (emailReset && !mail)
+        {
+            throw new ServiceError(503, "Password reset email is unavailable.");
+        }
+
+        if (emailReset && !account.emailVerifiedAt)
+        {
+            throw new ServiceError(409, "The student must verify their email before an emailed reset.");
+        }
+
+        const nextPassword = emailReset ? randomBytes(24).toString("base64url") : password;
+        const passwordHash = await hashPassword(nextPassword);
+        if (!await this.accounts.updateStudentPassword(account, passwordHash))
+        {
+            throw new ServiceError(409, "The student's account changed. Reload it and try again.");
+        }
+
+        if (emailReset && mail)
+        {
+            try
+            {
+                await mail.send({
+                    to: account.email,
+                    subject: "Your Aggies Learn password was reset",
+                    text: `Your new password is ${nextPassword}\n\nSign in, then open Account to choose a new password.`,
+                });
+            }
+            catch
+            {
+                // Restore the previous password only if another change has not replaced the reset.
+                const restored = await this.accounts.updateStudentPassword({ ...account, passwordHash }, account.passwordHash);
+                throw new ServiceError(502, restored
+                    ? "The reset email could not be sent. The previous password was restored."
+                    : "The reset email could not be sent and the account changed. Reload it before trying again.");
+            }
+        }
+    }
+
+    /**
      * Authenticate an account and load its current roles.
      * @param email Email address used to sign in.
      * @param password Password supplied by the account holder.
@@ -174,7 +308,7 @@ export class AuthService
         const key = `auth:email-verification:${hashToken(token)}`;
         const url = new URL(verificationURL);
         url.searchParams.set("token", token);
-        await RedisService.setKey(key, account.id, verificationTtlSeconds);
+        await RedisService.setKey(key, { id: account.id, email: account.email }, verificationTtlSeconds);
         try
         {
             await mail.send({ to: account.email, subject: "Verify your Aggies Learn email", text: `Verify your email at ${url.href}` });
@@ -198,13 +332,11 @@ export class AuthService
             throw new ServiceError(400, "Invalid or expired verification link.");
         }
 
-        const accountId = await RedisService.takeKey<string>(`auth:email-verification:${hashToken(token)}`);
-        if (!accountId)
+        const target = await RedisService.takeKey<VerificationTarget>(`auth:email-verification:${hashToken(token)}`);
+        if (!target?.email || !await this.users.markEmailVerified(target.id, new Date().toISOString(), target.email))
         {
             throw new ServiceError(400, "Invalid or expired verification link.");
         }
-
-        await this.users.markEmailVerified(accountId, new Date().toISOString());
     }
 
     /**

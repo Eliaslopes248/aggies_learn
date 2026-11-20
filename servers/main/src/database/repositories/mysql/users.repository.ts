@@ -32,7 +32,7 @@ import { type Pool, type PoolConnection, type ResultSetHeader, type RowDataPacke
 
 import { type IDatabaseService } from "../../database.service.js";
 import { type Account, type AccountProfile, type AccountRole } from "../../models/users.model.js";
-import { type IUserRepository, type NewAccount } from "../interfaces/users.interface.js";
+import { type IUserRepository, type NewAccount, type ProfileChanges } from "../interfaces/users.interface.js";
 
 // represents a single account row
 interface AccountRow extends RowDataPacket, Account {}
@@ -216,6 +216,40 @@ export class MySQLUserRepository implements IUserRepository {
     }
 
     /** @inheritdoc */
+    async updateProfile(account: Account, changes: ProfileChanges): Promise<boolean>
+    {
+        const pool = await this.database.connect();
+        const [result] = await pool.execute<ResultSetHeader>(
+            `UPDATE accounts
+             SET first_name = ?, last_name = ?,
+                 email_verified_at = IF(BINARY email = BINARY ?, email_verified_at, NULL),
+                 email = ?, password_hash = ?
+             WHERE id = CAST(? AS SIGNED) AND BINARY email = BINARY ? AND password_hash <=> ?`,
+            [changes.firstName, changes.lastName, changes.email, changes.email,
+                changes.passwordHash ?? account.passwordHash, this.validateAccountId(account.id),
+                account.email, account.passwordHash],
+        );
+        return result.affectedRows > 0;
+    }
+
+    /** @inheritdoc */
+    async updateStudentPassword(account: Account, passwordHash: string | null): Promise<boolean>
+    {
+        const pool = await this.database.connect();
+        const [result] = await pool.execute<ResultSetHeader>(
+            `UPDATE accounts SET password_hash = ?
+             WHERE id = CAST(? AS SIGNED) AND BINARY email = BINARY ? AND password_hash <=> ?
+             AND email_verified_at <=> ?
+             AND EXISTS (
+                 SELECT 1 FROM account_roles WHERE account_id = accounts.id AND role = 'student'
+             )`,
+            [passwordHash, this.validateAccountId(account.id), account.email, account.passwordHash,
+                account.emailVerifiedAt?.slice(0, -1).replace("T", " ") ?? null],
+        );
+        return result.affectedRows > 0;
+    }
+
+    /** @inheritdoc */
     async updatePasswordHash(accountId: string, passwordHash: string): Promise<void> {
         const pool = await this.database.connect();
         await pool.execute(
@@ -225,7 +259,8 @@ export class MySQLUserRepository implements IUserRepository {
     }
 
     /** @inheritdoc */
-    async markEmailVerified(accountId: string, verifiedAt: string): Promise<void> {
+    async markEmailVerified(accountId: string, verifiedAt: string, email: string): Promise<boolean>
+    {
         const timestamp = verifiedAt.match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$/)?.[0];
         if (!timestamp)
         {
@@ -234,10 +269,11 @@ export class MySQLUserRepository implements IUserRepository {
 
         // Store the UTC timestamp in a MySQL DATETIME column
         const pool = await this.database.connect();
-        await pool.execute(
-            "UPDATE accounts SET email_verified_at = ? WHERE id = CAST(? AS SIGNED)",
-            [timestamp.slice(0, -1).replace("T", " "), this.validateAccountId(accountId)],
+        const [result] = await pool.execute<ResultSetHeader>(
+            "UPDATE accounts SET email_verified_at = COALESCE(email_verified_at, ?) WHERE id = CAST(? AS SIGNED) AND BINARY email = BINARY ?",
+            [timestamp.slice(0, -1).replace("T", " "), this.validateAccountId(accountId), email],
         );
+        return result.affectedRows > 0;
     }
 
     /** @inheritdoc */

@@ -33,6 +33,8 @@ beforeEach(async () =>
             logout: jest.fn().mockResolvedValue(undefined),
             verifyEmail: jest.fn().mockResolvedValue(undefined),
             sendVerification: jest.fn().mockResolvedValue(undefined),
+            updateProfile: jest.fn().mockResolvedValue({ ...profile, roles: ["student"] }),
+            changeStudentPassword: jest.fn().mockResolvedValue(undefined),
         },
         users: {
             listRoles: jest.fn(async id => ({ "1": ["student"], "2": ["admin"], "3": ["tutor"] })[id] ?? []),
@@ -166,6 +168,32 @@ describe("Auth and users routes", () =>
         expect(services.auth.verifyEmail).toHaveBeenCalledWith("token");
         expect(services.auth.sendVerification).toHaveBeenCalledTimes(1);
         expect(services.auth.sendVerification).toHaveBeenCalledWith("1");
+    });
+
+    test("scopes profile edits to the signed-in account", async () =>
+    {
+        const changes = { firstName: "Avery", lastName: "Brooks", email: "new@example.test" };
+        const options = { method: "PATCH", body: { ...changes, accountId: "2" } };
+
+        expect((await request("/users/me", options)).status).toBe(401);
+        const result = await request("/users/me", { ...options, actor: "1" });
+        expect(result.status).toBe(200);
+        expect(await result.json()).toEqual({ ...profile, roles: ["student"] });
+        expect(services.auth.updateProfile).toHaveBeenCalledWith("1", expect.objectContaining(changes));
+    });
+
+    test("restricts student password changes and emailed resets to current admins", async () =>
+    {
+        const path = "/users/students/1/password";
+        const set = { method: "PUT", body: { password: "sample-password" } };
+        const reset = { method: "POST" };
+
+        expect((await request(path, set)).status).toBe(401);
+        expect((await request(path, { ...set, actor: "1", claims: ["admin"] })).status).toBe(403);
+        expect((await request(path + "/reset", { ...reset, actor: "1", claims: ["admin"] })).status).toBe(403);
+        expect((await request(path, { ...set, actor: "2" })).status).toBe(204);
+        expect((await request(path + "/reset", { ...reset, actor: "2" })).status).toBe(204);
+        expect(services.auth.changeStudentPassword.mock.calls).toEqual([["1", "sample-password"], ["1"]]);
     });
 
     test("allows only current admins to search student metadata and edit student names", async () =>

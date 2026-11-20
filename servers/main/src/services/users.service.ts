@@ -219,16 +219,29 @@ export class UserService
     }
 
     /**
-     * Record when an account's email was verified.
+     * Clear cached account details after a profile mutation.
+     * @param accountId Account whose profile changed.
+     */
+    async invalidateProfile(accountId: string): Promise<void>
+    {
+        await RedisService.deleteKey(getProfileCacheKey(accountId)).catch(() => undefined);
+    }
+
+    /**
+     * Record verification only while the linked email remains current.
      * @param accountId Account ID.
      * @param verifiedAt UTC verification timestamp.
+     * @param email Address associated with the token.
+     * @returns Whether the account matched the token.
      */
-    async markEmailVerified(accountId: string, verifiedAt: string): Promise<void>
+    async markEmailVerified(accountId: string, verifiedAt: string, email: string): Promise<boolean>
     {
-        await this.userRepository.markEmailVerified(accountId, verifiedAt);
-
-        // Clear the cached verification status after the database update
-        await RedisService.deleteKey(getProfileCacheKey(accountId)).catch(() => undefined);
+        const verified = await this.userRepository.markEmailVerified(accountId, verifiedAt, email);
+        if (verified)
+        {
+            await this.invalidateProfile(accountId);
+        }
+        return verified;
     }
 
     /**

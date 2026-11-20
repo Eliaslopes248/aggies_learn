@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globa
 import { RedisService } from "../../dist/database/redis.service.js";
 import { signAccessToken, verifyAccessToken } from "../../dist/middleware/jwt.middleware.js";
 import { AuthService, refreshTtlSeconds } from "../../dist/services/auth.service.js";
-import { hashPassword } from "../../dist/services/password.utils.js";
+import { hashPassword, verifyPassword } from "../../dist/services/password.utils.js";
 
 const student = {
     id: "10", email: "student@example.test", firstName: "Avery", lastName: "Reed",
@@ -156,13 +156,57 @@ describe("Auth service", () =>
         await expect(auth.refresh(rotated.refreshToken)).rejects.toMatchObject({ status: 401 });
     });
 
+    test("requires the current password to change email and returns an unverified profile", async () =>
+    {
+        const account = { ...student, emailVerifiedAt: student.createdAt, passwordHash: await hashPassword(password) };
+        const accounts = {
+            findAccountById: jest.fn().mockResolvedValue(account),
+            listRoles: jest.fn().mockResolvedValue(["student"]),
+            updateProfile: jest.fn().mockResolvedValue(true),
+        };
+        const users = { invalidateProfile: jest.fn().mockResolvedValue(undefined) };
+        const auth = new AuthService(accounts, users, { redisEnabled: false });
+        const changes = { firstName: "Avery", lastName: "Brooks", email: "New@Example.test" };
+
+        await expect(auth.updateProfile(student.id, changes)).rejects.toMatchObject({ status: 403 });
+        expect(accounts.updateProfile).not.toHaveBeenCalled();
+
+        const updated = await auth.updateProfile(student.id, { ...changes, currentPassword: password });
+        expect(updated).toMatchObject({ lastName: "Brooks", email: "new@example.test", emailVerifiedAt: null });
+        expect(updated).not.toHaveProperty("passwordHash");
+        expect(users.invalidateProfile).toHaveBeenCalledWith(student.id);
+    });
+
+    test("emails a generated student password and restores the old hash on delivery failure", async () =>
+    {
+        const account = { ...student, emailVerifiedAt: student.createdAt, passwordHash: await hashPassword(password) };
+        const accounts = {
+            findAccountById: jest.fn().mockResolvedValue(account),
+            listRoles: jest.fn().mockResolvedValue(["student"]),
+            updateStudentPassword: jest.fn().mockResolvedValue(true),
+        };
+        const mail = { send: jest.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("SMTP down")) };
+        const auth = new AuthService(accounts, {}, { redisEnabled: false, mail });
+
+        await auth.changeStudentPassword(student.id);
+        const message = mail.send.mock.calls[0][0];
+        const generatedPassword = message.text.split("\n")[0].split(" ").at(-1);
+        const firstHash = accounts.updateStudentPassword.mock.calls[0][1];
+        expect(message.to).toBe(student.email);
+        expect(await verifyPassword(generatedPassword, firstHash)).toBe(true);
+
+        await expect(auth.changeStudentPassword(student.id)).rejects.toMatchObject({ status: 502 });
+        const secondHash = accounts.updateStudentPassword.mock.calls[1][1];
+        expect(accounts.updateStudentPassword).toHaveBeenLastCalledWith({ ...account, passwordHash: secondHash }, account.passwordHash);
+    });
+
     test("emails a short-lived verification token and accepts it only once", async () =>
     {
         const setKey = jest.spyOn(RedisService, "setKey").mockResolvedValue(undefined);
         const takeKey = jest.spyOn(RedisService, "takeKey")
-            .mockResolvedValueOnce(student.id).mockResolvedValueOnce(null);
+            .mockResolvedValueOnce({ id: student.id, email: student.email }).mockResolvedValueOnce(null);
         const accounts = { findAccountById: jest.fn().mockResolvedValue(student) };
-        const users = { markEmailVerified: jest.fn().mockResolvedValue(undefined) };
+        const users = { markEmailVerified: jest.fn().mockResolvedValue(true) };
         const mail = { send: jest.fn().mockResolvedValue(undefined) };
         const auth = new AuthService(accounts, users, {
             redisEnabled: true, mail, verificationURL: "https://example.test/verify",
@@ -176,7 +220,7 @@ describe("Auth service", () =>
         expect(message.to).toBe(student.email);
         expect(key).toMatch(/^auth:email-verification:[a-f0-9]{64}$/);
         expect(key).not.toContain(token);
-        expect(setKey).toHaveBeenCalledWith(key, student.id, 1800);
+        expect(setKey).toHaveBeenCalledWith(key, { id: student.id, email: student.email }, 1800);
         await auth.verifyEmail(token);
         await expect(auth.verifyEmail(token)).rejects.toMatchObject({ status: 400 });
         expect(takeKey).toHaveBeenCalledWith(key);

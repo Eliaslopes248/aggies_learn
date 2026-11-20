@@ -218,7 +218,7 @@ function App({ roles, api: suppliedApi }: { roles?: readonly AccountRole[]; api?
                         <Route
                             path="/account"
                             element={workspace(profile
-                                ? <AccountPage profile={profile} onLogout={logout} />
+                                ? <AccountPage api={api} profile={profile} onUpdate={setProfile} onLogout={logout} />
                                 : <ShellPage title="Account" description="Your account details will appear here." />)}
                         />
                         <Route

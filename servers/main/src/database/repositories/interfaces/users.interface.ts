@@ -35,6 +35,10 @@ import { type Account, type AccountProfile, type AccountRole } from "../../model
 // Account fields supplied when creating a user
 export type NewAccount = Pick<Account, "email" | "firstName" | "lastName" | "passwordHash">;
 
+export type ProfileChanges = Pick<Account, "firstName" | "lastName" | "email"> & {
+    passwordHash?: string;
+};
+
 export interface IUserRepository {
     /**
      * Create an account and its initial roles in one transaction.
@@ -96,6 +100,18 @@ export interface IUserRepository {
     updateStudentName(studentId: string, firstName: string, lastName: string): Promise<boolean>;
 
     /**
+     * Save profile fields if the email and credential used to authorize the change are current.
+     * @returns Whether the expected account state matched.
+     */
+    updateProfile(account: Account, changes: ProfileChanges): Promise<boolean>;
+
+    /**
+     * Replace a student's password if the recipient and previous credential are still current.
+     * @returns Whether the expected student account matched.
+     */
+    updateStudentPassword(account: Account, passwordHash: string | null): Promise<boolean>;
+
+    /**
      * Update the account's password hash.
      * @param accountId Account ID.
      * @param passwordHash Hash of the new password.
@@ -106,8 +122,10 @@ export interface IUserRepository {
      * Record when an account's email was verified.
      * @param accountId Account ID.
      * @param verifiedAt UTC verification timestamp.
+     * @param email Address associated with the verification link.
+     * @returns Whether the link still applies to the account.
      */
-    markEmailVerified(accountId: string, verifiedAt: string): Promise<void>;
+    markEmailVerified(accountId: string, verifiedAt: string, email: string): Promise<boolean>;
 
     /**
      * List the roles assigned to an account.
