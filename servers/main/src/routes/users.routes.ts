@@ -30,11 +30,13 @@
 
 import { Router, type RequestHandler } from "express";
 
-import { requireRole, requireSession } from "../middleware/jwt.middleware.js";
+import { requireSession } from "../middleware/jwt.middleware.js";
+import { noStore, requireCurrentRole } from "./route.utils.js";
 import { authRateLimit, sendAuthSession } from "./auth.routes.js";
 import { type ServiceSet } from "../settings/contracts.js";
 
 const usersRouter = Router();
+usersRouter.use(noStore);
 
 // Cache keys use <resource>:<id>:<data>, such as users:<id>:profile
 // Profiles expire after five minutes and fall back to MySQL on a cache miss
@@ -85,6 +87,6 @@ usersRouter.get("/me", requireSession, getAccount);
 
 // Let admins use the same profile 
 // cache and load current roles from MySQL
-usersRouter.get("/:accountId", requireSession, requireRole("admin"), getAccount);
+usersRouter.get("/:accountId", requireSession, requireCurrentRole("admin"), getAccount);
 
 export default usersRouter;

@@ -41,6 +41,10 @@ import { MySQLEmailOutboxRepository } from "../database/repositories/mysql/email
 import { MySQLTutorAssignmentRepository } from "../database/repositories/mysql/tutor-assignments.repository.js";
 import { MySQLUserRepository } from "../database/repositories/mysql/users.repository.js";
 import { createTransactionRunner, type RunTransaction } from "../database/transaction.js";
+import availabilityRouter from "../routes/availability.routes.js";
+import bookingsRouter from "../routes/bookings.routes.js";
+import catalogRouter from "../routes/catalog.routes.js";
+import tutorsRouter from "../routes/tutors.routes.js";
 import authRouter from "../routes/auth.routes.js";
 import usersRouter from "../routes/users.routes.js";
 import { AuthService } from "../services/auth.service.js";
@@ -130,6 +134,10 @@ function attachSubRoutes(app: Express): void
 {
     app.use("/auth", authRouter);
     app.use("/users", usersRouter);
+    app.use("/catalog", catalogRouter);
+    app.use("/tutors", tutorsRouter);
+    app.use("/availability", availabilityRouter);
+    app.use("/bookings", bookingsRouter);
 }
 
 /** Return service errors as JSON and pass unexpected failures to Express. */

@@ -1,6 +1,6 @@
 # Backend unit testing
 
-The main server uses Jest in the Node test environment. Tests live in [servers/main/tests](../../servers/main/tests). They exercise service behavior, JWT middleware, and MySQL transaction handling with fake repositories, a fake email provider, and mocked Redis calls. Docker, MySQL, Redis, and SMTP are optional for this suite.
+The main server uses Jest in the Node test environment. Tests live in [servers/main/tests](../../servers/main/tests). Service and database tests use fake dependencies. Route tests start the Express app on an ephemeral loopback port and use fake services. The suite runs without Docker, MySQL, Redis, or SMTP.
 
 ## Run the tests
 
@@ -14,7 +14,8 @@ npm --prefix servers/main run test
 Run one suite or one named test.
 
 ```sh
-npm --prefix servers/main run test -- tests/scheduling.test.js
+npm --prefix servers/main run test -- tests/services/scheduling.test.js
+npm --prefix servers/main run test -- tests/routes
 npm --prefix servers/main run test -- --testNamePattern="rotates refresh tokens"
 ```
 
@@ -32,20 +33,17 @@ The [server package configuration](../../servers/main/package.json) builds TypeS
 
 ## Suite layout
 
-| Suite | What it checks |
+| Directory | What it checks |
 | --- | --- |
-| `auth.test.js` | Registration, password verification, JWT expiry, refresh rotation, and email verification |
-| `jwt-middleware.test.js` | Bearer token handling, request identity, and role enforcement |
-| `users.test.js` | Profile cache hits, MySQL fallback, cache TTL, and invalidation |
-| `catalog.test.js` | Catalog visibility, admin access to archives, and course import validation |
-| `tutoring.test.js` | Tutor provisioning, role checks, and active course assignment |
-| `scheduling.test.js` | Availability, booking conflicts, cancellation, and notification enqueueing |
-| `email-delivery.test.js` | Outbox delivery, retry timing, and overlapping batch requests |
-| `database.test.js` | Transaction commit and rollback, connection cleanup, and repository use of a caller's transaction |
+| `tests/services/` | Auth, profile caching, catalog, tutoring, scheduling, booking, and email delivery |
+| `tests/middleware/` | Bearer token handling, request identity, and role enforcement |
+| `tests/database/` | MySQL and Redis connection lifecycle, transaction commit and rollback, and connection cleanup |
+| `tests/repositories/` | Query parameters, ownership checks, retry behavior, and use of the caller's transaction |
+| `tests/routes/` | HTTP requests across auth, users, catalog, tutors, availability, and bookings |
 
 ## Add a test
 
-Put the test beside the closest existing suite or create `tests/<subsystem>.test.js`. Import Jest helpers from `@jest/globals` and import the compiled module from `../dist/`. Use small objects with `jest.fn()` to supply the dependencies the unit actually calls.
+Put the test beside the closest existing suite under `tests/<directory>/`. Import Jest helpers from `@jest/globals` and import the compiled module from `../../dist/`. Use small objects with `jest.fn()` to supply the dependencies under test.
 
 Use fixed timestamps for scheduling and expiry checks. Restore environment variables, spies, and timers after tests that change them. For transaction tests, pass a fake connection and assert that related writes receive that same connection.
 

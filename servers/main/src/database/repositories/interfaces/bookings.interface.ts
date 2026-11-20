@@ -40,6 +40,7 @@ export interface BookingSearch
     startsAt?: string;
     endsAt?: string;
     includeCanceled?: boolean;
+    canceledOnly?: boolean;
     limit: number;
     offset: number;
 }

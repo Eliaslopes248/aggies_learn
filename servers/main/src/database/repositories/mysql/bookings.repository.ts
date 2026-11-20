@@ -82,13 +82,15 @@ export class MySQLBookingRepository implements IBookingRepository
         const [rows] = await pool.execute<BookingRow[]>(
             `${selectBookings}
              WHERE (? OR canceled_at IS NULL)
+               AND (? = FALSE OR canceled_at IS NOT NULL)
                AND (? IS NULL OR CAST(? AS SIGNED) IN (student_id, tutor_id))
                AND (? IS NULL OR tutor_id = CAST(? AS SIGNED))
                AND (? IS NULL OR course_id = CAST(? AS SIGNED))
                AND (? IS NULL OR ends_at > ?)
                AND (? IS NULL OR starts_at < ?)
              ORDER BY starts_at, bookings.id LIMIT ? OFFSET ?`,
-            [filters.includeCanceled ?? false, participant, participant, tutor, tutor, course, course,
+            [Boolean(filters.includeCanceled || filters.canceledOnly), filters.canceledOnly ?? false,
+                participant, participant, tutor, tutor, course, course,
                 start, start, end, end, filters.limit, filters.offset],
         );
         return rows;

@@ -1,5 +1,17 @@
 services:
-  
+
+  # FRONTEND APP
+  frontend:
+    image: aggies-learn-frontend:local
+    build:
+      context: ../../app/aggie-learning-lounge
+    environment:
+      BACKEND_URL: http://main-server:3000
+    depends_on:
+      - main-server
+    ports:
+      - "4173:4173"
+
   # MAIN BACKEND SERVER
   main-server:
     image: aggies-learn-main:local
@@ -7,16 +19,27 @@ services:
       context: ../../servers/main
     environment:
       REDIS_URL: redis://redis:6379
-      SMTP_URL: "${SMTP_URL:-}"
-      MAIL_FROM: "${MAIL_FROM:-}"
-      VERIFICATION_URL: "${VERIFICATION_URL:-}"
+      SMTP_URL: "${SMTP_URL:-smtp://mailpit:1025}"
+      MAIL_FROM: "${MAIL_FROM:-no-reply@aggies-learn.test}"
+      VERIFICATION_URL: "${VERIFICATION_URL:-http://localhost:4173/verify-email}"
       CAMPUS_EMAIL_DOMAIN: "${CAMPUS_EMAIL_DOMAIN:-}"
-      JWT_SECRET: "${JWT_SECRET:-27c62e076aef176f3cec211b5e0a20fd4d84ef9cd107b6f412405f48581f891d}"
+      JWT_SECRET: "${JWT_SECRET:-}"
       MYSQL_HOST: mysql
       MYSQL_PASSWORD: &mysql_password "dev-admin"
       MYSQL_DATABASE: &mysql_database aggie_learning_lounge
       MYSQL_USER: &mysql_user admin
+    # Rotate the default signing key when the local stack starts fresh
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        if [ -z "$$JWT_SECRET" ]; then
+          export JWT_SECRET="$$(node -p 'require("node:crypto").randomBytes(32).toString("hex")')"
+        fi
+        exec node dist/index.js
     depends_on:
+      mailpit:
+        condition: service_healthy
       redis:
         condition: service_healthy
       mysql:
@@ -24,9 +47,17 @@ services:
     ports:
       - "3000:3000"
 
+  # LOCAL EMAIL INBOX
+  mailpit:
+    image: axllent/mailpit:v1.34.0
+    ports:
+      - "127.0.0.1:8025:8025"
+
   # CACHING SERVICE
   redis:
     image: redis:8-alpine
+    tmpfs:
+      - /data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -43,8 +74,10 @@ services:
       MYSQL_USER: *mysql_user
     ports:
       - "3306:3306"
+    # Rebuild the local database from SQL whenever MySQL starts
+    tmpfs:
+      - /var/lib/mysql
     volumes:
-      - mysql_data:/var/lib/mysql
       - ../../servers/main/database:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test:
@@ -54,6 +87,3 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-
-volumes:
-  mysql_data:

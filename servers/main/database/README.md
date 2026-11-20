@@ -12,9 +12,15 @@ The SQL creates InnoDB tables in the database named by `MYSQL_DATABASE`. The sub
 
 ## Initialization
 
-The Compose service mounts this directory at `/docker-entrypoint-initdb.d`. On first startup with an empty MySQL data volume, the image selects `MYSQL_DATABASE` and runs the top-level `00-bootstrap.sh`. Keep that file non-executable so the entrypoint sources it. The script uses the entrypoint’s SQL helper to load each raw SQL file in dependency order.
+Local Compose stores MySQL data in memory. Each MySQL startup initializes a fresh database, loads the schema in dependency order, and seeds the sample Computer Science catalog. The image selects `MYSQL_DATABASE` and sources the top-level `00-bootstrap.sh` from `/docker-entrypoint-initdb.d`. Keep that file non-executable.
 
-Use versioned migrations for existing volumes. MySQL DDL commits implicitly, so an interrupted initialization can leave a partial schema. Inspect the startup logs and schema before retrying or replacing a volume.
+To reset an already running local stack from the repository root, recreate all containers so Redis cache and session data reset alongside MySQL.
+
+```sh
+docker compose -f orchestrate/compose/main.compose.yaml up -d --force-recreate
+```
+
+Use versioned migrations on persistent databases.
 
 To inspect an initialized database from the repository root, run the following and enter the configured application password when prompted.
 

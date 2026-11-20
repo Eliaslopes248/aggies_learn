@@ -28,6 +28,7 @@
 // ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+import { type Booking } from "../database/models/appointments.model.js";
 import { type IAvailabilityRepository } from "../database/repositories/interfaces/availability.interface.js";
 import { type BookingSearch, type IBookingRepository } from "../database/repositories/interfaces/bookings.interface.js";
 import { type ICatalogRepository } from "../database/repositories/interfaces/catalog.interface.js";
@@ -125,6 +126,29 @@ export class BookingService
     }
 
     /**
+     * Read a booking for a participant or an admin.
+     * @param actorId Account requesting the booking.
+     * @param bookingId Booking to read.
+     * @returns Booking with its confirmed location.
+     */
+    async getSession(actorId: string, bookingId: string) : Promise<Booking>
+    {
+        requireId(actorId);
+        const booking = await this.bookings.findBooking(requireId(bookingId));
+        if (!booking)
+        {
+            throw new ServiceError(404, "Booking not found.");
+        }
+
+        if (actorId !== booking.studentId && actorId !== booking.tutorId)
+        {
+            await requireAccountRole(this.users, actorId, "admin");
+        }
+
+        return booking;
+    }
+
+    /**
      * Cancel an upcoming booking and queue its notices once.
      * @param actorId Account requesting the cancellation.
      * @param bookingId Upcoming booking to cancel.
@@ -132,17 +156,7 @@ export class BookingService
      */
     async cancelSession(actorId: string, bookingId: string): Promise<boolean>
     {
-        requireId(actorId);
-        const current = await this.bookings.findBooking(requireId(bookingId));
-        if (!current)
-        {
-            throw new ServiceError(404, "Booking not found.");
-        }
-
-        if (actorId !== current.studentId && actorId !== current.tutorId)
-        {
-            await requireAccountRole(this.users, actorId, "admin");
-        }
+        const current = await this.getSession(actorId, bookingId);
 
         return this.transaction(async connection =>
         {
