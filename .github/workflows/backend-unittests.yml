@@ -1,0 +1,36 @@
+name: Backend unit tests
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-unittests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: servers/main
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+          cache: npm
+          cache-dependency-path: servers/main/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build backend and run unit tests
+        run: npm run test
