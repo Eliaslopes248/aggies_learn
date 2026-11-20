@@ -28,13 +28,13 @@
 // ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import { type Account, type AccountRole } from "../database/models/users.model.js";
+import { type Account, type AccountProfile, type AccountRole } from "../database/models/users.model.js";
 import { RedisService } from "../database/redis.service.js";
 import { type IUserRepository, type NewAccount } from "../database/repositories/interfaces/users.interface.js";
+import { requireId, requirePage, requireText, ServiceError } from "./service.utils.js";
 
 // Keep cached profiles short-lived
 const profileCacheTtlSeconds = 300;
-type UserProfile = Omit<Account, "passwordHash">;
 
 /**
  * Get the Redis key for a user profile.
@@ -51,7 +51,7 @@ function getProfileCacheKey(accountId: string): string
  * @param account Stored account.
  * @returns Account details without credentials.
  */
-export function toUserProfile(account: Account): UserProfile
+export function toUserProfile(account: Account): AccountProfile
 {
     const { id, email, firstName, lastName, emailVerifiedAt, createdAt } = account;
     return { id, email, firstName, lastName, emailVerifiedAt, createdAt };
@@ -97,12 +97,12 @@ export class UserService
      * @param accountId Account ID.
      * @returns Profile or null if the account does not exist.
      */
-    async getProfile(accountId: string): Promise<UserProfile | null>
+    async getProfile(accountId: string): Promise<AccountProfile | null>
     {
         const key = getProfileCacheKey(accountId);
 
         // Fall back to MySQL when Redis is unavailable
-        const cached = await RedisService.getKey<UserProfile>(key).catch(() => null);
+        const cached = await RedisService.getKey<AccountProfile>(key).catch(() => null);
         if (typeof cached?.firstName === "string" && typeof cached.lastName === "string")
         {
             return cached;
@@ -119,6 +119,83 @@ export class UserService
         // cache user profile
         await RedisService.setKey(key, profile, profileCacheTtlSeconds).catch(() => undefined);
         return profile;
+    }
+
+    /**
+     * List tutor profiles for the admin directory.
+     * @param search Optional first or last name query.
+     * @param limit Maximum number of results.
+     * @param offset Number of results to skip.
+     * @returns One page of tutor profiles.
+     */
+    listTutors(search: string, limit: number, offset: number): Promise<AccountProfile[]>
+    {
+        return this.userRepository.listTutors(this.directorySearch(search, limit, offset), limit, offset);
+    }
+
+    /**
+     * List student profiles for the admin catalog.
+     * @param search Optional first or last name query.
+     * @param limit Maximum number of results.
+     * @param offset Number of results to skip.
+     * @returns One page of student profiles.
+     */
+    listStudents(search: string, limit: number, offset: number): Promise<AccountProfile[]>
+    {
+        return this.userRepository.listStudents(this.directorySearch(search, limit, offset), limit, offset);
+    }
+
+    /** Validate pagination and normalize whitespace between name parts. */
+    private directorySearch(search: string, limit: number, offset: number): string
+    {
+        requirePage(limit, offset);
+        const name = search.trim().replace(/\s+/g, " ");
+        if (name.length > 301)
+        {
+            throw new ServiceError(400, "Search must be at most 301 characters.");
+        }
+
+        return name;
+    }
+
+    /**
+     * Update a tutor's name and clear the cached profile.
+     * @param tutorId Tutor account ID.
+     * @param firstName Updated first name.
+     * @param lastName Updated last name.
+     */
+    async updateTutorName(tutorId: string, firstName: string, lastName: string): Promise<void>
+    {
+        const id = requireId(tutorId);
+        const first = requireText(firstName, 150, "First name");
+        const last = requireText(lastName, 150, "Last name");
+
+        if (!await this.userRepository.updateTutorName(id, first, last))
+        {
+            throw new ServiceError(404, "Tutor account not found.");
+        }
+
+        await RedisService.deleteKey(getProfileCacheKey(id)).catch(() => undefined);
+    }
+
+    /**
+     * Update a student's name and clear the cached profile.
+     * @param studentId Student account ID.
+     * @param firstName Updated first name.
+     * @param lastName Updated last name.
+     */
+    async updateStudentName(studentId: string, firstName: string, lastName: string): Promise<void>
+    {
+        const id = requireId(studentId);
+        const first = requireText(firstName, 150, "First name");
+        const last = requireText(lastName, 150, "Last name");
+
+        if (!await this.userRepository.updateStudentName(id, first, last))
+        {
+            throw new ServiceError(404, "Student account not found.");
+        }
+
+        await RedisService.deleteKey(getProfileCacheKey(id)).catch(() => undefined);
     }
 
     /**

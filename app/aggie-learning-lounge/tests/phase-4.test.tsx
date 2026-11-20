@@ -114,7 +114,7 @@ describe('Phase 4 — Scheduling and sessions', () =>
 
         expect(screen.getByRole('heading', { name: 'Selected time' })).toBeDefined()
         expect(screen.getByText(/Introduction to Computing · Taylor Reed/)).toBeDefined()
-        expect(screen.getByText(/^Thu, Nov 19, 11:00 AM EST to .*11:30 AM EST$/)).toBeDefined()
+        expect(screen.getByText(/^Thu, Nov 19, 11:00 AM EST to .*11:30 AM EST$/, { ignore: 'dialog:not([open]) *' })).toBeDefined()
         expect(screen.getByRole('button', { name: 'Review booking' })).toBeDefined()
         expect(send.mock.calls.some(([, init]) => init?.method === 'POST' && init.body)).toBe(false)
     })
@@ -156,7 +156,7 @@ describe('Phase 4 — Scheduling and sessions', () =>
 
         confirmDialog('Review booking')
         expect(await screen.findByRole('heading', { name: 'Booking confirmed' })).toBeDefined()
-        expect(await screen.findByText(booking.location)).toBeDefined()
+        expect(await screen.findByText(booking.location)).toHaveProperty('tagName', 'STRONG')
         expect(send).toHaveBeenCalledWith('/api/bookings', expect.objectContaining({
             method: 'POST', body: JSON.stringify({ courseId: '7', ...slot }),
         }))
@@ -229,7 +229,7 @@ describe('Phase 4 — Scheduling and sessions', () =>
         await screen.findByRole('button', { name: 'Withdraw' })
         confirmDialog('Withdraw')
         expect(await screen.findByText(/Confirmed bookings are still scheduled/)).toBeDefined()
-        expect(await screen.findByText(booking.location)).toBeDefined()
+        expect(await screen.findByText(booking.location)).toHaveProperty('tagName', 'STRONG')
         expect(screen.queryByRole('button', { name: 'Withdraw' })).toBeNull()
         expect(send).toHaveBeenCalledWith('/api/availability/blocks/5', expect.objectContaining({ method: 'DELETE' }))
     })

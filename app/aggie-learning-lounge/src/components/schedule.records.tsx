@@ -17,8 +17,8 @@ export function BookingLocation({ location }: { location: string }) : React.JSX.
     {
         return (
             <p>
-                <a
-                    className="text-link"
+                Location: <a
+                    className="text-link booking-location-link"
                     href={link.href}
                     target="_blank"
                     rel="noreferrer"
@@ -29,7 +29,7 @@ export function BookingLocation({ location }: { location: string }) : React.JSX.
         )
     }
 
-    return <p>{location}</p>
+    return <p>Location: <strong>{location}</strong></p>
 }
 
 /**
@@ -75,7 +75,7 @@ export function BookingRecord({ booking, title, actorId, onCancel }: {
             <StatusLabel tone={booking.canceledAt ? 'negative' : 'positive'}>
                 {booking.canceledAt ? 'Canceled' : 'Confirmed'}
             </StatusLabel>
-            <p>{formatCampusTime(booking.startsAt)} to {formatCampusTime(booking.endsAt)}</p>
+            <p>Time: <strong>{formatCampusTime(booking.startsAt)} to {formatCampusTime(booking.endsAt)}</strong></p>
             {actorId && (
                 <p>
                     {booking.tutorId === actorId ? `Student account ${booking.studentId}` : `Tutor account ${booking.tutorId}`}

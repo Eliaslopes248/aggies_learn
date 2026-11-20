@@ -56,3 +56,18 @@ test("clears the cached profile only after email verification is saved", async (
     expect(repository.markEmailVerified).toHaveBeenCalledWith(account.id, timestamp);
     expect(clear).toHaveBeenCalledWith(key);
 });
+
+test("validates tutor name edits and clears the cached profile after saving", async () =>
+{
+    const clear = jest.spyOn(RedisService, "deleteKey").mockResolvedValue(undefined);
+    const repository = { updateTutorName: jest.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true) };
+    const users = new UserService(repository);
+
+    await expect(users.updateTutorName(account.id, "", "Brooks")).rejects.toMatchObject({ status: 400 });
+    await expect(users.updateTutorName(account.id, "Avery", "Brooks")).rejects.toMatchObject({ status: 404 });
+    expect(clear).not.toHaveBeenCalled();
+
+    await users.updateTutorName(account.id, " Avery ", " Brooks ");
+    expect(repository.updateTutorName.mock.calls).toEqual([[account.id, "Avery", "Brooks"], [account.id, "Avery", "Brooks"]]);
+    expect(clear).toHaveBeenCalledWith(key);
+});

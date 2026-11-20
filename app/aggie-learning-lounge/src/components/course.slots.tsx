@@ -103,7 +103,7 @@ export default function CourseSlots({ api, courseId, title, tutors, profile, ret
     if (confirmed)
     {
         return (
-            <section className="schedule-panel" aria-labelledby="booking-confirmed">
+            <section className="schedule-panel booking-confirmation" aria-labelledby="booking-confirmed">
                 <h2 id="booking-confirmed">Booking confirmed</h2>
                 {booking && <BookingRecord booking={booking} title={title} />}
                 <Link to="/sessions" className="button button--primary">View My Sessions</Link>
@@ -191,12 +191,18 @@ export default function CourseSlots({ api, courseId, title, tutors, profile, ret
                 <div className="workspace-record schedule-review">
                     <h3>Selected time</h3>
                     <p>{title} · {tutorNames[selected.tutorId] ?? 'Tutor'}</p>
-                    <p>{formatCampusTime(selected.startsAt)} to {formatCampusTime(selected.endsAt)}</p>
+                    <p>Time: <strong>{formatCampusTime(selected.startsAt)} to {formatCampusTime(selected.endsAt)}</strong></p>
                     {canBook && !busy && (
                         <ConfirmationDialog
                             triggerLabel="Review booking"
                             title="Confirm this tutoring session"
-                            description={`${title} with ${tutorNames[selected.tutorId] ?? 'your tutor'}, ${formatCampusTime(selected.startsAt)} to ${formatCampusTime(selected.endsAt)}.`}
+                            description={
+                                <>
+                                    {title} with {tutorNames[selected.tutorId] ?? 'your tutor'}.
+                                    <br />
+                                    Time: <strong>{formatCampusTime(selected.startsAt)} to {formatCampusTime(selected.endsAt)}</strong>
+                                </>
+                            }
                             confirmLabel="Book session"
                             onConfirm={() => void confirmBooking()}
                         />

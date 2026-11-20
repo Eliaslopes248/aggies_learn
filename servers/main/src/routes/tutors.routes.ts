@@ -32,7 +32,7 @@ import { Router } from "express";
 
 import { requireSession } from "../middleware/jwt.middleware.js";
 import { ServiceError } from "../services/service.utils.js";
-import { getActor, getServices, noStore, queryText, requireCurrentRole } from "./route.utils.js";
+import { getActor, getServices, noStore, queryInteger, queryText, requireCurrentRole } from "./route.utils.js";
 
 const tutorsRouter = Router();
 
@@ -43,6 +43,25 @@ tutorsRouter.use(noStore, requireSession);
 tutorsRouter.get("/me/courses", requireCurrentRole("tutor"), async (req, res) =>
 {
     res.json(await getServices(req).tutoring.listTutorCourses(getActor(res)));
+});
+
+// Read the admin directory directly from MySQL so search and metadata stay current.
+tutorsRouter.get("/admin", requireCurrentRole("admin"), async (req, res) =>
+{
+    const { search, limit, offset } = req.query;
+    res.json(await getServices(req).users.listTutors(
+        queryText(search) ?? "",
+        queryInteger(limit, 25),
+        queryInteger(offset, 0),
+    ));
+});
+
+// Update the tutor name and invalidate the cached account profile.
+tutorsRouter.patch("/:tutorId", requireCurrentRole("admin"), async (req, res) =>
+{
+    const { firstName, lastName } = req.body ?? {};
+    await getServices(req).users.updateTutorName(queryText(req.params.tutorId) ?? "", firstName, lastName);
+    res.status(204).end();
 });
 
 // Let admins review a tutor's active assignments before making changes.

@@ -28,30 +28,30 @@
 // ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import { type Pool, type PoolConnection, type RowDataPacket } from "mysql2/promise";
+import { type Pool, type PoolConnection, type ResultSetHeader, type RowDataPacket } from "mysql2/promise";
 
 import { type IDatabaseService } from "../../database.service.js";
-import { type Account, type AccountRole } from "../../models/users.model.js";
+import { type Account, type AccountProfile, type AccountRole } from "../../models/users.model.js";
 import { type IUserRepository, type NewAccount } from "../interfaces/users.interface.js";
 
 // represents a single account row
 interface AccountRow extends RowDataPacket, Account {}
+interface AccountProfileRow extends RowDataPacket, AccountProfile {}
 
 interface AccountRoleRow extends RowDataPacket {
     role: AccountRole;
 }
 
 // Keep BIGINT IDs and UTC timestamps precise across driver settings
-const selectAccounts = `
-    SELECT CAST(id AS CHAR) AS id,
-           email,
-           first_name AS firstName,
-           last_name AS lastName,
-           password_hash AS passwordHash,
-           DATE_FORMAT(email_verified_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS emailVerifiedAt,
-           DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS createdAt
-    FROM accounts
+const accountProfileColumns = `
+    CAST(id AS CHAR) AS id,
+    email,
+    first_name AS firstName,
+    last_name AS lastName,
+    DATE_FORMAT(email_verified_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS emailVerifiedAt,
+    DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS createdAt
 `;
+const selectAccounts = `SELECT ${accountProfileColumns}, password_hash AS passwordHash FROM accounts`;
 
 export class MySQLUserRepository implements IUserRepository {
     private readonly database: IDatabaseService<Pool>;
@@ -152,6 +152,67 @@ export class MySQLUserRepository implements IUserRepository {
             [email.trim().toLowerCase()],
         );
         return account ?? null;
+    }
+
+    /** @inheritdoc */
+    listTutors(search: string, limit: number, offset: number): Promise<AccountProfile[]>
+    {
+        return this.listDirectoryProfiles("tutor", search, limit, offset);
+    }
+
+    /** @inheritdoc */
+    listStudents(search: string, limit: number, offset: number): Promise<AccountProfile[]>
+    {
+        return this.listDirectoryProfiles("student", search, limit, offset);
+    }
+
+    /** Read one page of matching profiles for the requested account role. */
+    private async listDirectoryProfiles(role: AccountRole, search: string, limit: number, offset: number): Promise<AccountProfile[]>
+    {
+        const pool = await this.database.connect();
+
+        // Match partial names in either order and escape literal wildcard characters.
+        const pattern = `%${search.split(" ").map(part => part.replace(/[!%_]/g, "!$&")).join("%")}%`;
+        const [rows] = await pool.execute<AccountProfileRow[]>(
+            `SELECT ${accountProfileColumns}
+             FROM accounts
+             WHERE EXISTS (
+                 SELECT 1 FROM account_roles WHERE account_id = accounts.id AND role = ?
+             )
+             AND (CONCAT(first_name, ' ', last_name) LIKE ? ESCAPE '!'
+                  OR CONCAT(last_name, ' ', first_name) LIKE ? ESCAPE '!')
+             ORDER BY last_name, first_name, accounts.id
+             LIMIT ? OFFSET ?`,
+            [role, pattern, pattern, limit, offset],
+        );
+        return rows;
+    }
+
+    /** @inheritdoc */
+    updateTutorName(tutorId: string, firstName: string, lastName: string): Promise<boolean>
+    {
+        return this.updateDirectoryName("tutor", tutorId, firstName, lastName);
+    }
+
+    /** @inheritdoc */
+    updateStudentName(studentId: string, firstName: string, lastName: string): Promise<boolean>
+    {
+        return this.updateDirectoryName("student", studentId, firstName, lastName);
+    }
+
+    /** Update the name only while the account holds the requested role. */
+    private async updateDirectoryName(role: AccountRole, accountId: string, firstName: string, lastName: string): Promise<boolean>
+    {
+        const pool = await this.database.connect();
+        const [result] = await pool.execute<ResultSetHeader>(
+            `UPDATE accounts
+             SET first_name = ?, last_name = ?
+             WHERE id = CAST(? AS SIGNED) AND EXISTS (
+                 SELECT 1 FROM account_roles WHERE account_id = accounts.id AND role = ?
+             )`,
+            [firstName, lastName, this.validateAccountId(accountId), role],
+        );
+        return result.affectedRows > 0;
     }
 
     /** @inheritdoc */

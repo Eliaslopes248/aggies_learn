@@ -11,6 +11,7 @@ import { CourseDetailPage, CoursesPage } from './pages/courses.page.js'
 // Load role-specific workspaces only when their routes are opened.
 const AdminCatalogPage = lazy(() => import('./pages/admin.catalog.page.js'))
 const AdminTutorsPage = lazy(() => import('./pages/admin.tutors.page.js'))
+const AdminStudentsPage = lazy(() => import('./pages/admin.students.page.js'))
 const AdminBookingsPage = lazy(() => import('./pages/admin.bookings.page.js'))
 const TutorCoursesPage = lazy(() => import('./pages/tutor.courses.page.js'))
 const SessionsPage = lazy(() => import('./pages/sessions.page.js'))
@@ -130,7 +131,7 @@ function App({ roles, api: suppliedApi }: { roles?: readonly AccountRole[]; api?
     return (
         <>
             <a className="skip-link" href="#main-content">Skip to main content</a>
-            <AppHeader key={location.pathname} roles={currentRoles} />
+            <AppHeader key={location.pathname} roles={currentRoles} firstName={profile?.firstName} />
 
             <main id="main-content" tabIndex={-1}>
                 {!profile && logoutError && (
@@ -143,6 +144,7 @@ function App({ roles, api: suppliedApi }: { roles?: readonly AccountRole[]; api?
                     <nav className="page-width section-nav" aria-label="Admin workspace">
                         <NavLink to="/admin/catalog">Catalog</NavLink>
                         <NavLink to="/admin/tutors">Tutors</NavLink>
+                        <NavLink to="/admin/students">Students</NavLink>
                         <NavLink to="/admin/bookings">Bookings</NavLink>
                     </nav>
                 )}
@@ -243,6 +245,10 @@ function App({ roles, api: suppliedApi }: { roles?: readonly AccountRole[]; api?
                         <Route
                             path="/admin/tutors"
                             element={workspace(<AdminTutorsPage api={api} />, currentRoles.includes('admin'))}
+                        />
+                        <Route
+                            path="/admin/students"
+                            element={workspace(<AdminStudentsPage api={api} />, currentRoles.includes('admin'))}
                         />
                         <Route
                             path="/admin/bookings"

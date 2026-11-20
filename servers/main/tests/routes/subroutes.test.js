@@ -37,6 +37,10 @@ beforeEach(async () =>
         users: {
             listRoles: jest.fn(async id => ({ "1": ["student"], "2": ["admin"], "3": ["tutor"] })[id] ?? []),
             getProfile: jest.fn(async id => ({ ...profile, id })),
+            listStudents: jest.fn().mockResolvedValue([{ ...profile, id: "1" }]),
+            updateStudentName: jest.fn().mockResolvedValue(undefined),
+            listTutors: jest.fn().mockResolvedValue([{ ...profile, id: "3" }]),
+            updateTutorName: jest.fn().mockResolvedValue(undefined),
         },
         catalog: {
             listColleges: jest.fn().mockResolvedValue([]),
@@ -164,6 +168,26 @@ describe("Auth and users routes", () =>
         expect(services.auth.sendVerification).toHaveBeenCalledWith("1");
     });
 
+    test("allows only current admins to search student metadata and edit student names", async () =>
+    {
+        const listing = "/users/students?search=Avery%20Re&limit=25&offset=10";
+        const edit = {
+            method: "PATCH", claims: ["admin"], body: { firstName: "Avery", lastName: "Brooks" },
+        };
+
+        expect((await request(listing)).status).toBe(401);
+        expect((await request(listing, { actor: "1", claims: ["admin"] })).status).toBe(403);
+        expect((await request("/users/students/1", { ...edit, actor: "1" })).status).toBe(403);
+
+        const result = await request(listing, { actor: "2" });
+        expect(result.status).toBe(200);
+        expect(result.headers.get("cache-control")).toBe("no-store");
+        expect(await result.json()).toEqual([{ ...profile, id: "1" }]);
+        expect((await request("/users/students/1", { ...edit, actor: "2" })).status).toBe(204);
+        expect(services.users.listStudents.mock.calls).toEqual([["Avery Re", 25, 10]]);
+        expect(services.users.updateStudentName.mock.calls).toEqual([["1", "Avery", "Brooks"]]);
+    });
+
     test("uses current roles for admin lookup even if a token still claims admin", async () =>
     {
         expect((await request("/users/me")).status).toBe(401);
@@ -246,6 +270,26 @@ describe("Catalog routes", () =>
 
 describe("Tutor routes", () =>
 {
+    test("allows only current admins to search tutor metadata and edit tutor names", async () =>
+    {
+        const listing = "/tutors/admin?search=Avery%20Re&limit=25&offset=10";
+        const edit = {
+            method: "PATCH", claims: ["admin"], body: { firstName: "Avery", lastName: "Brooks" },
+        };
+
+        expect((await request(listing)).status).toBe(401);
+        expect((await request(listing, { actor: "3", claims: ["admin"] })).status).toBe(403);
+        expect((await request("/tutors/3", { ...edit, actor: "3" })).status).toBe(403);
+
+        const result = await request(listing, { actor: "2" });
+        expect(result.status).toBe(200);
+        expect(result.headers.get("cache-control")).toBe("no-store");
+        expect(await result.json()).toEqual([{ ...profile, id: "3" }]);
+        expect((await request("/tutors/3", { ...edit, actor: "2" })).status).toBe(204);
+        expect(services.users.listTutors.mock.calls).toEqual([["Avery Re", 25, 10]]);
+        expect(services.users.updateTutorName.mock.calls).toEqual([["3", "Avery", "Brooks"]]);
+    });
+
     test("requires sign-in for discovery and returns only tutor names and IDs", async () =>
     {
         expect((await request("/tutors?courseId=7")).status).toBe(401);

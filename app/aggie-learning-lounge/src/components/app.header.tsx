@@ -7,9 +7,12 @@ export type AccountRole = 'student' | 'tutor' | 'admin'
 
 /**
  * Show the shared navigation and workspaces available to the account.
- * @param props Roles assigned to the current account.
+ * @param props Roles and first name of the current account.
  */
-export function AppHeader({ roles }: { roles: readonly AccountRole[] }) : React.JSX.Element
+export function AppHeader({ roles, firstName }: {
+    roles: readonly AccountRole[]
+    firstName: string | undefined
+}) : React.JSX.Element
 {
     const [isOpen, setIsOpen] = useState(false)
     const menuButton = useRef<HTMLButtonElement>(null)
@@ -83,17 +86,46 @@ export function AppHeader({ roles }: { roles: readonly AccountRole[] }) : React.
                             </li>
                         ))}
 
-                        <li>
-                            <NavLink
-                                className="account-link"
-                                to={roles.length ? '/account' : signIn}
-                                onClick={() => setIsOpen(false)}
-                            >
-                                {roles.length ? 'Account' : 'Sign in'}
-                            </NavLink>
-                        </li>
+                        {!roles.length && (
+                            <li>
+                                <NavLink
+                                    className="sign-in-link"
+                                    to={signIn}
+                                    onClick={() => setIsOpen(false)}
+                                >
+                                    Sign in
+                                </NavLink>
+                            </li>
+                        )}
                     </ul>
                 </nav>
+
+                {roles.length > 0 && (
+                    <div className="account-actions">
+                        {firstName && <span className="account-greeting">Hi, {firstName}</span>}
+
+                        <NavLink
+                            className="account-link"
+                            to="/account"
+                            aria-label="Account"
+                            onClick={() => setIsOpen(false)}
+                        >
+                            <svg
+                                aria-hidden="true"
+                                width="24"
+                                height="24"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.75"
+                                strokeLinecap="round"
+                            >
+                                <circle cx="12" cy="8" r="3" />
+                                <path d="M5.5 19c.3-3.2 3-5 6.5-5s6.2 1.8 6.5 5" />
+                            </svg>
+                        </NavLink>
+                    </div>
+                )}
             </div>
         </header>
     )

@@ -42,6 +42,9 @@ export interface Account {
     createdAt: string;
 }
 
+// Profile fields safe to return to authorized clients
+export type AccountProfile = Omit<Account, "passwordHash">;
+
 // Role assigned to an account
 export interface AccountRoleAssignment {
     accountId: string;

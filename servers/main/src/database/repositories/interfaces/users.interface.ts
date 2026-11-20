@@ -30,7 +30,7 @@
 
 import { type PoolConnection } from "mysql2/promise";
 
-import { type Account, type AccountRole } from "../../models/users.model.js";
+import { type Account, type AccountProfile, type AccountRole } from "../../models/users.model.js";
 
 // Account fields supplied when creating a user
 export type NewAccount = Pick<Account, "email" | "firstName" | "lastName" | "passwordHash">;
@@ -58,6 +58,42 @@ export interface IUserRepository {
      * @returns Account or null if it does not exist.
      */
     findAccountByEmail(email: string, transaction?: PoolConnection): Promise<Account | null>;
+
+    /**
+     * List tutors whose names match the search, in name order.
+     * @param search Optional first or last name query.
+     * @param limit Maximum number of tutors to return.
+     * @param offset Number of matching tutors to skip.
+     * @returns Tutor profiles without credential fields.
+     */
+    listTutors(search: string, limit: number, offset: number): Promise<AccountProfile[]>;
+
+    /**
+     * List students whose names match the search, in name order.
+     * @param search Optional first or last name query.
+     * @param limit Maximum number of students to return.
+     * @param offset Number of matching students to skip.
+     * @returns Student profiles without credential fields.
+     */
+    listStudents(search: string, limit: number, offset: number): Promise<AccountProfile[]>;
+
+    /**
+     * Update an account name while the account has the tutor role.
+     * @param tutorId Tutor account ID.
+     * @param firstName Updated first name.
+     * @param lastName Updated last name.
+     * @returns Whether a tutor account matched the ID.
+     */
+    updateTutorName(tutorId: string, firstName: string, lastName: string): Promise<boolean>;
+
+    /**
+     * Update an account name while the account has the student role.
+     * @param studentId Student account ID.
+     * @param firstName Updated first name.
+     * @param lastName Updated last name.
+     * @returns Whether a student account matched the ID.
+     */
+    updateStudentName(studentId: string, firstName: string, lastName: string): Promise<boolean>;
 
     /**
      * Update the account's password hash.

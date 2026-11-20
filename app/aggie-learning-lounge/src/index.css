@@ -47,7 +47,7 @@ main { flex: 1; }
 
 .header-inner {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   column-gap: 0.75rem;
   min-height: 4.25rem;
@@ -121,7 +121,34 @@ main { flex: 1; }
   text-decoration: underline;
   text-underline-offset: 0.25em;
 }
-.workspace-nav a.account-link { color: var(--aggie-blue); }
+.workspace-nav a.sign-in-link { color: var(--aggie-blue); }
+
+.account-actions {
+  grid-column: 3;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--aggie-blue);
+}
+.account-greeting {
+  max-inline-size: clamp(4.5rem, 24vw, 12rem);
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.account-link {
+  display: grid;
+  flex: none;
+  place-items: center;
+  inline-size: 44px;
+  block-size: 44px;
+  border: 1px solid var(--control-border);
+  border-radius: 50%;
+  color: var(--aggie-blue);
+}
+.account-link:hover, .account-link[aria-current="page"] { background: var(--surface-blue); }
+.account-link[aria-current="page"] { border: 2px solid var(--aggie-blue); }
 
 .courses-hero {
   position: relative;
@@ -230,10 +257,10 @@ main { flex: 1; }
 
 .confirmation-dialog {
   position: fixed;
-  width: min(100% - 2rem, 26rem);
+  width: min(100% - 2rem, 32rem);
   max-height: calc(100dvh - 2rem);
   margin: auto;
-  padding: 1.25rem;
+  padding: clamp(1rem, 4vw, 2rem);
   overflow: auto;
   border: 1px solid var(--divider);
   border-radius: 0.75rem;
@@ -243,7 +270,8 @@ main { flex: 1; }
 .confirmation-dialog:modal { overscroll-behavior: contain; }
 .confirmation-dialog::backdrop { background: #17213280; overflow: hidden; overscroll-behavior: contain; }
 .confirmation-dialog h2 { font-size: 1.25rem; font-weight: 700; }
-.confirmation-dialog p { margin-block: 0.5rem 1.25rem; color: var(--text-muted); }
+.confirmation-dialog p { margin-block: 0.75rem 1.5rem; color: var(--text-muted); }
+.confirmation-dialog strong { color: var(--text); }
 .dialog-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
 
 @media (min-width: 48rem) {
@@ -252,9 +280,9 @@ main { flex: 1; }
   .wordmark { font-size: 1rem; white-space: nowrap; }
   .wordmark strong { display: inline; }
   .menu-toggle { display: none; }
-  .workspace-nav[data-open] { display: block; }
+  .workspace-nav[data-open] { display: block; margin-inline-start: auto; }
   .workspace-nav ul { flex-flow: row wrap; padding-block: 0; }
-  .workspace-nav a.account-link { margin-inline-start: 0.25rem; border: 1px solid var(--control-border); }
+  .workspace-nav a.sign-in-link { margin-inline-start: 0.25rem; border: 1px solid var(--control-border); }
   .hero-break { display: initial; }
   .courses-hero::after { inset-block-start: -6rem; inset-inline-end: -6rem; }
 }
@@ -269,7 +297,7 @@ main { flex: 1; }
   overflow-wrap: anywhere;
 }
 .auth-panel h1 { font-size: clamp(1.6rem, 5vw, 2rem); font-weight: 740; letter-spacing: -0.035em; }
-.auth-description { margin-block: 0.5rem 1.25rem; color: var(--text-muted); }
+.auth-description { margin-block: 0.75rem 1.5rem; color: var(--text-muted); }
 .auth-form, .auth-name-fields, .auth-actions { display: grid; gap: 1rem; }
 .auth-password .button { justify-self: start; margin-top: 0.25rem; padding-inline: 0; text-decoration: underline; }
 .auth-switch { margin-top: 1.125rem; color: var(--text-muted); }
@@ -325,6 +353,42 @@ main { flex: 1; }
 .course-card strong { grid-column: 1; }
 .course-card-arrow { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: var(--aggie-blue); }
 .picker-result { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem; }
+
+.account-directory-table {
+  max-inline-size: 100%;
+  max-block-size: min(38rem, 70vh);
+  overflow: auto;
+  border: 1px solid var(--divider);
+  border-radius: 0.75rem;
+}
+.account-directory-table:focus-visible { outline: 2px solid var(--aggie-blue); outline-offset: 3px; }
+.account-directory-table table { inline-size: 100%; border-spacing: 0; }
+.account-directory-table thead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  background: var(--surface-subtle);
+}
+.account-directory-table :is(th, td) {
+  border-block-end: 1px solid var(--divider);
+  padding: 0.75rem;
+  text-align: start;
+  vertical-align: top;
+}
+.account-directory-table tbody tr:last-child > * { border-block-end: 0; }
+.account-directory-table tbody th {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1;
+  min-inline-size: 7rem;
+  max-inline-size: 12rem;
+  background: var(--aggie-white);
+  overflow-wrap: anywhere;
+}
+.account-directory-table tbody th .button { display: flex; padding-inline: 0.25rem; }
+.account-id-toggle { inline-size: 44px; padding-inline: 0; }
+.account-metadata { display: grid; gap: 0.35rem; min-inline-size: 10rem; overflow-wrap: anywhere; }
+.account-metadata dt { color: var(--text-muted); font-size: 0.8rem; }
 .checkbox-field { display: inline-flex; align-items: center; gap: 0.5rem; min-height: 44px; }
 .text-link, .section-nav a { color: var(--aggie-blue); text-decoration: underline; text-underline-offset: 0.2em; }
 .section-nav { padding-top: 0.75rem; }
@@ -396,3 +460,14 @@ main { flex: 1; }
     .support-table tbody tr + tr { border-top: 1px solid var(--divider); }
     .support-table tbody tr:hover { background: var(--surface-blue); }
 }
+
+.booking-confirmation {
+  gap: 1rem;
+  max-inline-size: 38rem;
+  padding: clamp(1rem, 4vw, 1.75rem);
+  border: 1px solid var(--divider);
+  border-radius: 0.75rem;
+  background: var(--surface-subtle);
+}
+
+.booking-location-link { font-weight: 700; }

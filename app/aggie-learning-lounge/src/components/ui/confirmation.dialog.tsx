@@ -1,11 +1,11 @@
-import { useId, useRef } from 'react'
+import { useId, useRef, type ReactNode } from 'react'
 
 import { Button } from './controls.js'
 
 type ConfirmationDialogProps = {
     triggerLabel: string
     title: string
-    description: string
+    description: ReactNode
     confirmLabel: string
     destructive?: boolean
     onConfirm: () => void

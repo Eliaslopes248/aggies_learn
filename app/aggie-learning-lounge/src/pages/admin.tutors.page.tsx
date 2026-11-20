@@ -1,33 +1,66 @@
-import { useCallback, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 
 import { courseLabel, jsonWrite, readJson, requestMessage, type Course, type Tutor } from '../api/catalog.js'
 import type { ApiClient } from '../api/client.js'
 import { readAssignedCourses } from '../api/tutor.assignments.js'
 import { CoursePicker } from '../components/course.picker.js'
+import { AccountDirectory } from '../components/account.directory.js'
 import { ConfirmationDialog } from '../components/ui/confirmation.dialog.js'
 import { Button, Field } from '../components/ui/controls.js'
 import { EmptyState, FormMessage, LoadingState } from '../components/ui/feedback.js'
 import { useResource } from '../hooks/use.resource.js'
 
+type View = 'provision' | 'directory' | 'manage'
+
 /**
- * Provision hired tutors and manage their course assignments.
+ * Provision hired tutors, browse the directory, and manage assignments.
  * @param props Shared API client.
  * @returns Admin tutor workspace.
  */
 export default function AdminTutorsPage({ api }: { api: ApiClient }) : React.JSX.Element
 {
-    const [view, setView] = useState<'provision' | 'manage'>('provision')
+    const [view, setView] = useState<View>('provision')
     const [mode, setMode] = useState<'existing' | 'new'>('existing')
     const [picked, setPicked] = useState<Course[]>([])
     const [tutor, setTutor] = useState<Tutor | null>(null)
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState('')
     const [message, setMessage] = useState('')
+    const tutorHeading = useRef<HTMLHeadingElement>(null)
 
     const tutorId = tutor?.id
     const loadAssignments = useCallback((signal: AbortSignal) =>
         readAssignedCourses(api, `/tutors/${tutorId}/courses`, signal), [api, tutorId])
     const assignments = useResource(tutorId && view === 'manage' ? loadAssignments : null)
+
+    useEffect(() =>
+    {
+        if (view === 'manage' && tutorId)
+        {
+            tutorHeading.current?.focus()
+        }
+    }, [view, tutorId])
+
+    /**
+     * Open a workspace view and clear feedback from the previous view.
+     * @param next View to open.
+     */
+    function changeView(next: View) : void
+    {
+        setView(next)
+        setError('')
+        setMessage('')
+    }
+
+    /**
+     * Open the selected tutor in the editor.
+     * @param selected Tutor chosen in the directory.
+     */
+    function editTutor(selected: Tutor) : void
+    {
+        setTutor(selected)
+        changeView('manage')
+    }
 
     /**
      * Create or reuse a tutor account with the reviewed course list.
@@ -97,6 +130,43 @@ export default function AdminTutorsPage({ api }: { api: ApiClient }) : React.JSX
     }
 
     /**
+     * Save the selected tutor's first and last name.
+     * @param event Tutor name form submission.
+     */
+    async function saveTutorName(event: FormEvent<HTMLFormElement>) : Promise<void>
+    {
+        event.preventDefault()
+        if (!tutor)
+        {
+            return
+        }
+
+        const fields = new FormData(event.currentTarget)
+        const names = {
+            firstName: String(fields.get('firstName')).trim(),
+            lastName: String(fields.get('lastName')).trim(),
+        }
+        setBusy(true)
+        setError('')
+        setMessage('')
+
+        try
+        {
+            await api.request(`/tutors/${tutor.id}`, jsonWrite('PATCH', names))
+            setTutor({ ...tutor, ...names })
+            setMessage('Tutor name saved.')
+        }
+        catch (error)
+        {
+            setError(requestMessage(error))
+        }
+        finally
+        {
+            setBusy(false)
+        }
+    }
+
+    /**
      * Add or deactivate a course for the selected tutor.
      * @param courseId ID of the course.
      * @param method Assignment operation.
@@ -126,30 +196,28 @@ export default function AdminTutorsPage({ api }: { api: ApiClient }) : React.JSX
     return (
         <section className="catalog-section page-width">
             <h1 className="workspace-heading">Manage tutors</h1>
-            <div className="record-actions">
+            <div className="record-actions" role="group" aria-label="Tutor management views">
                 <Button
                     variant={view === 'provision' ? 'primary' : 'secondary'}
                     aria-pressed={view === 'provision'}
                     disabled={busy}
-                    onClick={() =>
-                    {
-                        setView('provision')
-                        setError('')
-                        setMessage('')
-                    }}
+                    onClick={() => changeView('provision')}
                 >
                     Provision tutor
+                </Button>
+                <Button
+                    variant={view === 'directory' ? 'primary' : 'secondary'}
+                    aria-pressed={view === 'directory'}
+                    disabled={busy}
+                    onClick={() => changeView('directory')}
+                >
+                    Tutor directory
                 </Button>
                 <Button
                     variant={view === 'manage' ? 'primary' : 'secondary'}
                     aria-pressed={view === 'manage'}
                     disabled={busy}
-                    onClick={() =>
-                    {
-                        setView('manage')
-                        setError('')
-                        setMessage('')
-                    }}
+                    onClick={() => changeView('manage')}
                 >
                     Manage assignments
                 </Button>
@@ -158,7 +226,11 @@ export default function AdminTutorsPage({ api }: { api: ApiClient }) : React.JSX
             {error && <FormMessage kind="error">{error}</FormMessage>}
             {message && <FormMessage kind="success">{message}</FormMessage>}
 
-            {view === 'provision' ? (
+            <div hidden={view !== 'directory'}>
+                <AccountDirectory role="tutor" api={api} active={view === 'directory'} onEdit={editTutor} />
+            </div>
+
+            {view === 'provision' && (
                 <div className="workspace-record workspace-form">
                     <label className="field">Account setup
                         <select
@@ -247,7 +319,9 @@ export default function AdminTutorsPage({ api }: { api: ApiClient }) : React.JSX
                         Save tutor access
                     </Button>
                 </div>
-            ) : (
+            )}
+
+            {view === 'manage' && (
                 <div className="workspace-record workspace-form">
                     <form className="record-actions" onSubmit={findTutor}>
                         <Field
@@ -262,7 +336,38 @@ export default function AdminTutorsPage({ api }: { api: ApiClient }) : React.JSX
 
                     {tutor && (
                         <section className="workspace-form" aria-label="Tutor assignments">
-                            <h2>{tutor.firstName} {tutor.lastName}</h2>
+                            <h2 ref={tutorHeading} tabIndex={-1}>{tutor.firstName} {tutor.lastName}</h2>
+
+                            <form
+                                key={tutor.id}
+                                className="workspace-form"
+                                aria-label="Edit tutor name"
+                                onSubmit={saveTutorName}
+                            >
+                                <div className="record-actions">
+                                    <Field
+                                        label="First name"
+                                        name="firstName"
+                                        maxLength={150}
+                                        defaultValue={tutor.firstName}
+                                        required
+                                        disabled={busy}
+                                    />
+                                    <Field
+                                        label="Last name"
+                                        name="lastName"
+                                        maxLength={150}
+                                        defaultValue={tutor.lastName}
+                                        required
+                                        disabled={busy}
+                                    />
+                                </div>
+                                <div className="record-actions">
+                                    <Button type="submit" variant="secondary" pending={busy}>Save tutor name</Button>
+                                </div>
+                            </form>
+
+                            <h3>Active course assignments</h3>
                             {assignments.pending && <LoadingState label="Loading assignments" />}
                             {assignments.error && (
                                 <FormMessage kind="error">{assignments.error}</FormMessage>

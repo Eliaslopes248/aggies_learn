@@ -49,7 +49,7 @@ describe('Phase 1 — App shell and shared components', () =>
         const nav = within(screen.getByRole('navigation', { name: 'Main navigation' }))
         expect(nav.getByRole('link', { name: 'My Sessions' }).getAttribute('href')).toBe('/sessions')
         expect(nav.getByRole('link', { name: 'Tutor' }).getAttribute('href')).toBe('/tutor/calendar')
-        expect(nav.getByRole('link', { name: 'Account' })).toBeDefined()
+        expect(screen.getByRole('link', { name: 'Account' }).getAttribute('href')).toBe('/account')
         expect(nav.queryByRole('link', { name: 'Admin' })).toBeNull()
     })
 

@@ -67,6 +67,8 @@ describe('Phase 2 — Account and session flows', () =>
         renderApp('/tutor/calendar', send)
 
         expect(await screen.findByRole('heading', { name: 'Tutor calendar' })).toBeDefined()
+        expect(screen.getByText('Hi, Avery')).toBeDefined()
+        expect(screen.getByRole('link', { name: 'Account' }).querySelector('svg')).toBeDefined()
         expect(screen.getByRole('link', { name: 'My Sessions' })).toBeDefined()
         expect(send).toHaveBeenNthCalledWith(1, '/api/auth/refresh', { method: 'POST', credentials: 'same-origin' })
         expect(new Headers(send.mock.calls[1][1]?.headers).get('Authorization')).toBe('Bearer restored')

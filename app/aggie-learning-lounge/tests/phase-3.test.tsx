@@ -174,6 +174,96 @@ describe('Phase 3 — Discovery, catalog, and tutor onboarding', () =>
         }))
     })
 
+    test('searches the tutor directory, reveals the ID, and saves a name through the editor', async () =>
+    {
+        const tutor = {
+            id: '42', firstName: 'Avery', lastName: 'Reed', email: 'avery@example.test',
+            createdAt: '2026-11-01T17:00:00Z', emailVerifiedAt: null,
+        }
+        const send = renderPage('/admin/tutors', ['admin'], (url, init) =>
+        {
+            if (url.pathname === '/api/tutors/admin')
+            {
+                return Response.json(url.searchParams.get('search') === 'Avery Re' ? [tutor] : [])
+            }
+            if (url.pathname === '/api/tutors/42' && init?.method === 'PATCH')
+            {
+                return new Response(null, { status: 204 })
+            }
+            if (url.pathname === '/api/tutors/42/courses')
+            {
+                return Response.json([{ tutorId: '42', courseId: '7' }])
+            }
+        })
+
+        fireEvent.click(await screen.findByRole('button', { name: 'Tutor directory' }))
+        fireEvent.change(screen.getByRole('searchbox', { name: 'Search by first or last name' }), {
+            target: { value: 'Avery Re' },
+        })
+        fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+
+        const reveal = await screen.findByRole('button', { name: 'Show tutor ID for Avery Reed' })
+        expect(screen.getByRole('table', { name: 'Tutor search results' })).toBeDefined()
+        expect(screen.getByText(tutor.email)).toBeDefined()
+        expect(screen.getByText('Unverified')).toBeDefined()
+        expect(screen.queryByText('42')).toBeNull()
+        fireEvent.click(reveal)
+        expect(screen.getByText('42')).toBeDefined()
+        fireEvent.click(screen.getByRole('button', { name: 'Hide tutor ID for Avery Reed' }))
+        expect(screen.queryByText('42')).toBeNull()
+
+        fireEvent.click(screen.getByRole('button', { name: 'Edit Avery Reed' }))
+        expect(screen.getByRole('heading', { name: 'Avery Reed' })).toBe(document.activeElement)
+        expect(await screen.findByRole('button', { name: 'Deactivate' })).toBeDefined()
+        fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Brooks' } })
+        fireEvent.click(screen.getByRole('button', { name: 'Save tutor name' }))
+
+        expect(await screen.findByText('Tutor name saved.')).toBeDefined()
+        expect(screen.getByRole('heading', { name: 'Avery Brooks' })).toBeDefined()
+        expect(send).toHaveBeenCalledWith('/api/tutors/42', expect.objectContaining({
+            method: 'PATCH', body: JSON.stringify({ firstName: 'Avery', lastName: 'Brooks' }),
+        }))
+    })
+
+    test('searches student accounts, reveals an ID, and refreshes results after a name edit', async () =>
+    {
+        const student = {
+            id: '42', firstName: 'Avery', lastName: 'Reed', email: 'avery@example.test',
+            createdAt: '2026-11-01T17:00:00Z', emailVerifiedAt: null,
+        }
+        const send = renderPage('/admin/students', ['admin'], (url, init) =>
+        {
+            if (url.pathname === '/api/users/students')
+            {
+                return Response.json(url.searchParams.get('search') === 'Avery' ? [student] : [])
+            }
+            if (url.pathname === '/api/users/students/42' && init?.method === 'PATCH')
+            {
+                student.lastName = 'Brooks'
+                return new Response(null, { status: 204 })
+            }
+        })
+
+        fireEvent.change(await screen.findByRole('searchbox', { name: 'Search by first or last name' }), {
+            target: { value: 'Avery' },
+        })
+        fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+        const reveal = await screen.findByRole('button', { name: 'Show student ID for Avery Reed' })
+        expect(screen.getByText(student.email)).toBeDefined()
+        expect(screen.queryByText('42')).toBeNull()
+        fireEvent.click(reveal)
+        expect(screen.getByText('42')).toBeDefined()
+
+        fireEvent.click(screen.getByRole('button', { name: 'Edit Avery Reed' }))
+        fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Brooks' } })
+        fireEvent.click(screen.getByRole('button', { name: 'Save student name' }))
+        expect(await screen.findByRole('button', { name: 'Edit Avery Brooks' })).toBeDefined()
+        expect(screen.queryByText('42')).toBeNull()
+        expect(send).toHaveBeenCalledWith('/api/users/students/42', expect.objectContaining({
+            method: 'PATCH', body: JSON.stringify({ firstName: 'Avery', lastName: 'Brooks' }),
+        }))
+    })
+
     test('shows active course assignments in the tutor workspace', async () =>
     {
         const send = renderPage('/tutor/courses', ['tutor'])

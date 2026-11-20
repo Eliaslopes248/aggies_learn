@@ -31,7 +31,7 @@
 import { Router, type RequestHandler } from "express";
 
 import { requireSession } from "../middleware/jwt.middleware.js";
-import { noStore, requireCurrentRole } from "./route.utils.js";
+import { getServices, noStore, queryInteger, queryText, requireCurrentRole } from "./route.utils.js";
 import { authRateLimit, sendAuthSession } from "./auth.routes.js";
 import { type ServiceSet } from "../settings/contracts.js";
 
@@ -84,6 +84,25 @@ usersRouter.post("/", authRateLimit, registerStudent);
 // Get the signed-in user's cached 
 // profile and load current roles from MySQL
 usersRouter.get("/me", requireSession, getAccount);
+
+// List student profiles for the admin catalog.
+usersRouter.get("/students", requireSession, requireCurrentRole("admin"), async (req, res) =>
+{
+    const { search, limit, offset } = req.query;
+    res.json(await getServices(req).users.listStudents(
+        queryText(search) ?? "",
+        queryInteger(limit, 25),
+        queryInteger(offset, 0),
+    ));
+});
+
+// Save a student's name and invalidate the cached account profile.
+usersRouter.patch("/students/:studentId", requireSession, requireCurrentRole("admin"), async (req, res) =>
+{
+    const { firstName, lastName } = req.body ?? {};
+    await getServices(req).users.updateStudentName(queryText(req.params.studentId) ?? "", firstName, lastName);
+    res.status(204).end();
+});
 
 // Let admins use the same profile 
 // cache and load current roles from MySQL
